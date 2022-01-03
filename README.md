@@ -1,4 +1,4 @@
-## Yolact-tf2实例分割模型在tf2当中的实现
+## Yolact-tensorflow2实例分割模型在tensorflow2当中的实现
 ---
 
 ## 目录
