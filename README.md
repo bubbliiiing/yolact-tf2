@@ -20,8 +20,8 @@ tensorflow-gpu==2.2.0
 
 ## 文件下载
 训练所需的预训练权值可在百度网盘中下载。  
-链接: https://pan.baidu.com/s/1OIxe9w2t5nImstDEpjncnQ    
-提取码: eik3   
+链接: https://pan.baidu.com/s/1uMNg8ErXE0oETLemxVHbhw     
+提取码: fgjt    
 
 shapes数据集下载地址如下，该数据集是使用labelme标注的结果，尚未经过其它处理，用于区分三角形和正方形：  
 链接: https://pan.baidu.com/s/1hrCaEYbnSGBOhjoiOKQmig   
