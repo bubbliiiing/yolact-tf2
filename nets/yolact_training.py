@@ -1,3 +1,6 @@
+import math
+from functools import partial
+
 import tensorflow as tf
 from tensorflow import keras
 
@@ -27,6 +30,8 @@ from tensorflow import keras
 #     crop_mask = tf.cast(crop_mask, tf.float32)
 
 #     return pred * crop_mask
+
+eps = 1e-6
 
 def crop(masks, boxes):
     masks_shape = tf.shape(masks)
@@ -81,9 +86,8 @@ def loss_location(pred_offset, true_offsets, true_classes):
     #------------------------------------------#
     normalizer  = tf.maximum(1, tf.shape(positive_indices)[0])
     normalizer  = tf.cast(normalizer, dtype=tf.float32)
-    loss        = keras.backend.sum(regression_loss) / normalizer
+    loss        = keras.backend.sum(regression_loss) / (normalizer + eps)
     return loss
-
 
 def loss_ohem_conf(pred_classes, true_classes, negpos_ratio = 3):
     #------------------------------------------#
@@ -142,8 +146,9 @@ def loss_ohem_conf(pred_classes, true_classes, negpos_ratio = 3):
     #------------------------------------------#
     #   对损失进行归一化
     #------------------------------------------#
-    loss_c = tf.nn.softmax_cross_entropy_with_logits(labels = classes_gt_selected_one_hot, logits = classes_pred_selected)
-    loss_c = tf.reduce_sum(loss_c) / tf.cast(tf.reduce_sum(num_pos), tf.float32)
+    loss_c  = tf.nn.softmax_cross_entropy_with_logits(labels = classes_gt_selected_one_hot, logits = classes_pred_selected)
+    num_pos = tf.maximum(1.0, tf.cast(tf.reduce_sum(num_pos), tf.float32))
+    loss_c  = tf.reduce_sum(loss_c) / num_pos
     return loss_c
     
 def loss_lincomb_mask(pred_mask_coef, pred_proto, mask_gt, anchor_max_box, anchor_max_index, true_classes):
@@ -212,13 +217,15 @@ def loss_lincomb_mask(pred_mask_coef, pred_proto, mask_gt, anchor_max_box, ancho
         #   每个先验框各自计算平均值
         #-----------------------------------------------------#
         bbox_center         = map_to_center_form(tf.cast(pos_anchor_box, tf.float32))
-        mask_loss           = tf.reduce_sum(mask_loss, axis=[0, 1]) / bbox_center[:, 2] / bbox_center[:, 3]
+        mask_loss           = tf.reduce_sum(mask_loss, axis=[0, 1]) / (bbox_center[:, 2] + eps) / (bbox_center[:, 3] + eps)
         total_loss          += tf.reduce_sum(mask_loss)
         i = i + 1
         return i, n, total_loss, total_pos
 
     i, n, total_loss, total_pos = tf.while_loop(cond, body, [i, n, total_loss, total_pos])
-    return total_loss / tf.cast(proto_h, tf.float32) / tf.cast(proto_w, tf.float32) / tf.cast(total_pos, total_loss.dtype)
+    
+    total_pos = tf.maximum(1.0, tf.cast(tf.reduce_sum(total_pos), total_loss.dtype))
+    return total_loss / (tf.cast(proto_h, tf.float32) + eps) / (tf.cast(proto_w, tf.float32) + eps) / total_pos
 
 def loss_semantic_segmentation(segmentation_p, segment_gt):
     #-----------------------------------------------------#
@@ -234,7 +241,7 @@ def loss_semantic_segmentation(segmentation_p, segment_gt):
     downsampled_masks = tf.cast((downsampled_masks > 0.5), tf.float32)
     
     loss_s = keras.backend.binary_crossentropy(downsampled_masks, segmentation_p)
-    return tf.reduce_sum(loss_s) / mask_h / mask_w / tf.cast(n, tf.float32)
+    return tf.reduce_sum(loss_s) / (mask_h + eps) / (mask_w + eps) / (tf.cast(n, tf.float32) + eps)
 
 def yolact_Loss(args):
     #-----------------------------------------------------------------#
@@ -258,3 +265,41 @@ def yolact_Loss(args):
     total_loss  = loc_loss + conf_loss + mask_loss + seg_loss
     # total_loss = tf.Print(total_loss, [loc_loss,conf_loss,mask_loss,seg_loss], summarize=100)
     return total_loss
+
+def get_lr_scheduler(lr_decay_type, lr, min_lr, total_iters, warmup_iters_ratio = 0.05, warmup_lr_ratio = 0.1, no_aug_iter_ratio = 0.05, step_num = 10):
+    def yolox_warm_cos_lr(lr, min_lr, total_iters, warmup_total_iters, warmup_lr_start, no_aug_iter, iters):
+        if iters <= warmup_total_iters:
+            # lr = (lr - warmup_lr_start) * iters / float(warmup_total_iters) + warmup_lr_start
+            lr = (lr - warmup_lr_start) * pow(iters / float(warmup_total_iters), 2
+            ) + warmup_lr_start
+        elif iters >= total_iters - no_aug_iter:
+            lr = min_lr
+        else:
+            lr = min_lr + 0.5 * (lr - min_lr) * (
+                1.0
+                + math.cos(
+                    math.pi
+                    * (iters - warmup_total_iters)
+                    / (total_iters - warmup_total_iters - no_aug_iter)
+                )
+            )
+        return lr
+
+    def step_lr(lr, decay_rate, step_size, iters):
+        if step_size < 1:
+            raise ValueError("step_size must above 1.")
+        n       = iters // step_size
+        out_lr  = lr * decay_rate ** n
+        return out_lr
+
+    if lr_decay_type == "cos":
+        warmup_total_iters  = min(max(warmup_iters_ratio * total_iters, 1), 3)
+        warmup_lr_start     = max(warmup_lr_ratio * lr, 1e-6)
+        no_aug_iter         = min(max(no_aug_iter_ratio * total_iters, 1), 15)
+        func = partial(yolox_warm_cos_lr ,lr, min_lr, total_iters, warmup_total_iters, warmup_lr_start, no_aug_iter)
+    else:
+        decay_rate  = (min_lr / lr) ** (1 / (step_num - 1))
+        step_size   = total_iters / step_num
+        func = partial(step_lr, lr, decay_rate, step_size)
+
+    return func
