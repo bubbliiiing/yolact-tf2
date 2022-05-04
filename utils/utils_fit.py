@@ -39,8 +39,8 @@ def get_val_step_fn(strategy):
         #   多gpu验证
         #----------------------#
         @tf.function
-        def distributed_val_step(images, true_boxes, true_classes, mask_gt, segment_gt, anchor_max_box, anchor_max_index, net, optimizer):
-            per_replica_losses = strategy.run(val_step, args=(images, true_boxes, true_classes, mask_gt, segment_gt, anchor_max_box, anchor_max_index, net, optimizer))
+        def distributed_val_step(images, true_boxes, true_classes, mask_gt, segment_gt, anchor_max_box, anchor_max_index, net):
+            per_replica_losses = strategy.run(val_step, args=(images, true_boxes, true_classes, mask_gt, segment_gt, anchor_max_box, anchor_max_index, net))
             return strategy.reduce(tf.distribute.ReduceOp.MEAN, per_replica_losses, axis=None)
         return distributed_val_step
 
