@@ -1,3 +1,4 @@
+import os
 import os.path as osp
 
 import tensorflow as tf
@@ -47,6 +48,12 @@ if __name__ == '__main__':
     
     ids         = list(test_coco.imgToAnns.keys())
 
+    #------------------------------------#
+    #   创建文件夹
+    #------------------------------------#
+    if not osp.exists(map_out_path):
+        os.makedirs(map_out_path)
+        
     if map_mode == 0 or map_mode == 1:
         print("Load model.")
         yolact      = YOLACT(confidence = 0.05, nms_iou = 0.5)
