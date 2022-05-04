@@ -370,7 +370,7 @@ if __name__ == "__main__":
                 K.set_value(optimizer.lr, lr)
                 
                 fit_one_epoch(model, loss_history, optimizer, epoch, epoch_step, epoch_step_val, gen, gen_val, 
-                            end_epoch)
+                            end_epoch, save_period, save_dir, strategy)
 
                 train_dataloader.on_epoch_end()
                 val_dataloader.on_epoch_end()
